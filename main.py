@@ -8,7 +8,6 @@ from docx import Document
 
 app = FastAPI(title="IIMA Certificate Generator", description="Generate certificates efficiently using an Excel file and a Word template.")
 
-# Serve Upload Form
 @app.get("/", response_class=HTMLResponse)
 async def serve_form():
     return """
@@ -67,25 +66,42 @@ async def generate_certificates(excel_file: UploadFile = File(...), docx_templat
     temp_dir = tempfile.mkdtemp()
     output_dir = os.path.join(temp_dir, "certificates")
     os.makedirs(output_dir, exist_ok=True)
-    
+
+    # Save uploaded files
     excel_path = os.path.join(temp_dir, excel_file.filename)
     docx_path = os.path.join(temp_dir, docx_template.filename)
     with open(excel_path, "wb") as f:
         shutil.copyfileobj(excel_file.file, f)
     with open(docx_path, "wb") as f:
         shutil.copyfileobj(docx_template.file, f)
-    
+
+    # Read Excel file
     df = pd.read_excel(excel_path)
     names = df.iloc[:, 0].dropna().str.strip().tolist()
-    
+
     for name in names:
         doc = Document(docx_path)
-        for paragraph in doc.paragraphs:
-            if '{Name}' in paragraph.text:
-                paragraph.text = paragraph.text.replace('{Name}', name)
+        replace_text_preserving_format(doc, "{Name}", name)  # ✅ Format-safe replacement
         doc.save(os.path.join(output_dir, f"{name}_Certificate.docx"))
-    
+
+    # Zip all certificates
     zip_path = os.path.join(temp_dir, "certificates.zip")
     shutil.make_archive(zip_path.replace(".zip", ""), 'zip', output_dir)
-    
+
     return FileResponse(zip_path, filename="certificates.zip", media_type="application/zip")
+
+def replace_text_preserving_format(doc, placeholder, replacement):
+    """ Replaces {Name} without losing formatting & color """
+    for paragraph in doc.paragraphs:
+        for run in paragraph.runs:
+            if placeholder in run.text:
+                run.text = run.text.replace(placeholder, replacement)
+
+    # Also replace inside tables
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        if placeholder in run.text:
+                            run.text = run.text.replace(placeholder, replacement)
