@@ -3,4 +3,8 @@ uvicorn
 gunicorn
 pandas
 python-docx
-PyPDF2
+pypdf2
+openpyxl
+shutil
+subprocess
+python-multipart
