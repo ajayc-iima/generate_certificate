@@ -5,6 +5,7 @@ import os
 import tempfile
 import shutil
 from docx import Document
+from copy import deepcopy
 
 app = FastAPI()
 
@@ -89,11 +90,12 @@ async def generate_certificates(excel_file: UploadFile = File(...), docx_templat
         # Create a deep copy of the original document to preserve all formatting
         doc = Document(docx_path)
         
-        # Iterate through all paragraphs and their runs
+        # Iterate through all paragraphs to find and replace the name
         for paragraph in doc.paragraphs:
-            for run in paragraph.runs:
-                # Replace the placeholder with the actual name
-                run.text = run.text.replace('{Name}', name)
+            # Check if the paragraph contains the placeholder
+            if '{Name}' in paragraph.text:
+                # Preserve the original paragraph formatting
+                paragraph.text = paragraph.text.replace('{Name}', name)
         
         # Save the modified document
         docx_output_path = os.path.join(output_dir, f"{name}_Certificate.docx")
