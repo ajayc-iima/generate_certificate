@@ -16,7 +16,7 @@ async def serve_form():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Certificate Generator</title>
+    <title>IIMA Certificate Generator</title>
     <style>
         :root {
             --primary-color: #00457C;
