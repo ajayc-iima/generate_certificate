@@ -5,7 +5,6 @@ import os
 import tempfile
 import shutil
 from docx import Document
-from fpdf import FPDF
 
 app = FastAPI()
 
@@ -87,38 +86,21 @@ async def generate_certificates(excel_file: UploadFile = File(...), docx_templat
     names = df.iloc[:, 0].str.strip().tolist()
     
     for name in names:
+        # Create a deep copy of the original document to preserve all formatting
         doc = Document(docx_path)
+        
+        # Iterate through all paragraphs and their runs
         for paragraph in doc.paragraphs:
             for run in paragraph.runs:
-                if '{Name}' in run.text:
-                    run.text = run.text.replace('{Name}', name)
+                # Replace the placeholder with the actual name
+                run.text = run.text.replace('{Name}', name)
         
-        # Save DOCX certificate
+        # Save the modified document
         docx_output_path = os.path.join(output_dir, f"{name}_Certificate.docx")
         doc.save(docx_output_path)
-
-        # Convert DOCX to PDF
-        pdf_output_path = os.path.join(output_dir, f"{name}_Certificate.pdf")
-        convert_docx_to_pdf(docx_output_path, pdf_output_path)
-        
-        # Remove .docx file
-        os.remove(docx_output_path)
     
-    # Zip all PDFs for download
+    # Zip all DOCXs for download
     zip_path = os.path.join(temp_dir, "certificates.zip")
     shutil.make_archive(zip_path.replace(".zip", ""), 'zip', output_dir)
     
     return FileResponse(zip_path, filename="certificates.zip", media_type="application/zip")
-
-def convert_docx_to_pdf(docx_path, pdf_path):
-    """Convert a Word document to a simple PDF using FPDF"""
-    doc = Document(docx_path)
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-
-    for para in doc.paragraphs:
-        pdf.cell(200, 10, txt=para.text, ln=True, align='C')
-    
-    pdf.output(pdf_path)
