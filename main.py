@@ -9,6 +9,64 @@ from fpdf import FPDF
 
 app = FastAPI()
 
+# Serve Upload Form
+@app.get("/", response_class=HTMLResponse)
+async def serve_form():
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Certificate Generator</title>
+        <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+            form { margin: 20px auto; width: 300px; }
+            input, button { width: 100%; margin-top: 10px; padding: 8px; }
+            #download { display: none; margin-top: 20px; }
+        </style>
+    </head>
+    <body>
+        <h2>Upload Excel & Word Template</h2>
+        <form id="upload-form">
+            <input type="file" id="excel" accept=".xlsx" required><br>
+            <input type="file" id="docx" accept=".docx" required><br>
+            <button type="submit">Generate Certificates</button>
+        </form>
+        <p id="message"></p>
+        <a id="download" href="#" download>Download Certificates</a>
+
+        <script>
+            document.getElementById("upload-form").addEventListener("submit", async function(event) {
+                event.preventDefault();
+                
+                let formData = new FormData();
+                formData.append("excel_file", document.getElementById("excel").files[0]);
+                formData.append("docx_template", document.getElementById("docx").files[0]);
+
+                document.getElementById("message").innerText = "Processing...";
+
+                let response = await fetch("/generate-certificates/", {
+                    method: "POST",
+                    body: formData
+                });
+
+                if (response.ok) {
+                    let blob = await response.blob();
+                    let url = window.URL.createObjectURL(blob);
+                    let downloadLink = document.getElementById("download");
+                    downloadLink.href = url;
+                    downloadLink.style.display = "block";
+                    document.getElementById("message").innerText = "✅ Certificates generated! Download below:";
+                } else {
+                    document.getElementById("message").innerText = "❌ Error generating certificates!";
+                }
+            });
+        </script>
+    </body>
+    </html>
+    """
+
 @app.post("/generate-certificates/")
 async def generate_certificates(excel_file: UploadFile = File(...), docx_template: UploadFile = File(...)):
     # Create temporary directory
@@ -30,7 +88,10 @@ async def generate_certificates(excel_file: UploadFile = File(...), docx_templat
     
     for name in names:
         doc = Document(docx_path)
-        replace_text(doc, "{Name}", name)  # Using improved replacement function
+        for paragraph in doc.paragraphs:
+            for run in paragraph.runs:
+                if '{Name}' in run.text:
+                    run.text = run.text.replace('{Name}', name)
         
         # Save DOCX certificate
         docx_output_path = os.path.join(output_dir, f"{name}_Certificate.docx")
@@ -49,21 +110,6 @@ async def generate_certificates(excel_file: UploadFile = File(...), docx_templat
     
     return FileResponse(zip_path, filename="certificates.zip", media_type="application/zip")
 
-def replace_text(doc, placeholder, replacement):
-    """ Replaces text properly across runs without breaking formatting """
-    for paragraph in doc.paragraphs:
-        if placeholder in paragraph.text:
-            for run in paragraph.runs:
-                run.text = run.text.replace(placeholder, replacement)
-
-    # Also replace text inside tables
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    for run in paragraph.runs:
-                        run.text = run.text.replace(placeholder, replacement)
-
 def convert_docx_to_pdf(docx_path, pdf_path):
     """Convert a Word document to a simple PDF using FPDF"""
     doc = Document(docx_path)
@@ -73,6 +119,6 @@ def convert_docx_to_pdf(docx_path, pdf_path):
     pdf.set_font("Arial", size=12)
 
     for para in doc.paragraphs:
-        pdf.multi_cell(0, 10, txt=para.text, align='L')
+        pdf.cell(200, 10, txt=para.text, ln=True, align='C')
     
     pdf.output(pdf_path)
