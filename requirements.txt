@@ -5,6 +5,4 @@ pandas
 python-docx
 pypdf2
 openpyxl
-shutil
-subprocess
 python-multipart
