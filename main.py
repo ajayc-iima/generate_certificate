@@ -3,14 +3,24 @@ from fastapi.responses import FileResponse, HTMLResponse
 import pandas as pd
 import os
 from docx import Document
-from PyPDF2 import PdfReader, PdfWriter
 import tempfile
 import shutil
 import subprocess
 
 app = FastAPI()
 
-# Serve the Upload Form
+# LibreOffice AppImage URL
+LIBREOFFICE_URL = "https://download.documentfoundation.org/libreoffice/stable/7.6.4/appimage/x86_64/LibreOffice-fresh.basic-x86_64.AppImage"
+LIBREOFFICE_PATH = "/tmp/libreoffice.AppImage"
+
+# Ensure LibreOffice is available
+def ensure_libreoffice():
+    if not os.path.exists(LIBREOFFICE_PATH):
+        print("Downloading LibreOffice AppImage...")
+        subprocess.run(["wget", LIBREOFFICE_URL, "-O", LIBREOFFICE_PATH], check=True)
+        subprocess.run(["chmod", "+x", LIBREOFFICE_PATH], check=True)  # Make it executable
+
+# Serve Upload Form
 @app.get("/", response_class=HTMLResponse)
 async def serve_form():
     return """
@@ -70,6 +80,8 @@ async def serve_form():
 
 @app.post("/generate-certificates/")
 async def generate_certificates(excel_file: UploadFile = File(...), docx_template: UploadFile = File(...)):
+    ensure_libreoffice()  # Make sure LibreOffice is available
+
     # Create temporary directory
     temp_dir = tempfile.mkdtemp()
     output_dir = os.path.join(temp_dir, "certificates")
@@ -97,9 +109,9 @@ async def generate_certificates(excel_file: UploadFile = File(...), docx_templat
         docx_output_path = os.path.join(output_dir, f"{name}_Certificate.docx")
         doc.save(docx_output_path)
         
-        # Convert to PDF using LibreOffice
+        # Convert to PDF using LibreOffice AppImage
         subprocess.run([
-            "libreoffice", "--headless", "--convert-to", "pdf", docx_output_path, "--outdir", output_dir
+            LIBREOFFICE_PATH, "--headless", "--convert-to", "pdf", docx_output_path, "--outdir", output_dir
         ], check=True)
         
         # Remove .docx file
