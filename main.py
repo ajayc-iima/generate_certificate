@@ -2,23 +2,12 @@ from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 import pandas as pd
 import os
-from docx import Document
 import tempfile
 import shutil
-import subprocess
+from docx import Document
+from fpdf import FPDF
 
 app = FastAPI()
-
-# LibreOffice AppImage URL
-LIBREOFFICE_URL = "https://download.documentfoundation.org/libreoffice/stable/7.6.4/appimage/x86_64/LibreOffice-fresh.basic-x86_64.AppImage"
-LIBREOFFICE_PATH = "/tmp/libreoffice.AppImage"
-
-# Ensure LibreOffice is available
-def ensure_libreoffice():
-    if not os.path.exists(LIBREOFFICE_PATH):
-        print("Downloading LibreOffice AppImage...")
-        subprocess.run(["wget", LIBREOFFICE_URL, "-O", LIBREOFFICE_PATH], check=True)
-        subprocess.run(["chmod", "+x", LIBREOFFICE_PATH], check=True)  # Make it executable
 
 # Serve Upload Form
 @app.get("/", response_class=HTMLResponse)
@@ -80,8 +69,6 @@ async def serve_form():
 
 @app.post("/generate-certificates/")
 async def generate_certificates(excel_file: UploadFile = File(...), docx_template: UploadFile = File(...)):
-    ensure_libreoffice()  # Make sure LibreOffice is available
-
     # Create temporary directory
     temp_dir = tempfile.mkdtemp()
     output_dir = os.path.join(temp_dir, "certificates")
@@ -106,13 +93,13 @@ async def generate_certificates(excel_file: UploadFile = File(...), docx_templat
                 if '{Name}' in run.text:
                     run.text = run.text.replace('{Name}', name)
         
+        # Save DOCX certificate
         docx_output_path = os.path.join(output_dir, f"{name}_Certificate.docx")
         doc.save(docx_output_path)
-        
-        # Convert to PDF using LibreOffice AppImage
-        subprocess.run([
-            LIBREOFFICE_PATH, "--headless", "--convert-to", "pdf", docx_output_path, "--outdir", output_dir
-        ], check=True)
+
+        # Convert DOCX to PDF
+        pdf_output_path = os.path.join(output_dir, f"{name}_Certificate.pdf")
+        convert_docx_to_pdf(docx_output_path, pdf_output_path)
         
         # Remove .docx file
         os.remove(docx_output_path)
@@ -122,3 +109,17 @@ async def generate_certificates(excel_file: UploadFile = File(...), docx_templat
     shutil.make_archive(zip_path.replace(".zip", ""), 'zip', output_dir)
     
     return FileResponse(zip_path, filename="certificates.zip", media_type="application/zip")
+
+def convert_docx_to_pdf(docx_path, pdf_path):
+    """Convert a Word document to a simple PDF using FPDF"""
+    doc = Document(docx_path)
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+
+    for para in doc.paragraphs:
+        pdf.cell(200, 10, txt=para.text, ln=True, align='C')
+    
+    pdf.output(pdf_path)
+
