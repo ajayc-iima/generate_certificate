@@ -5,9 +5,8 @@ import os
 import tempfile
 import shutil
 from docx import Document
-from copy import deepcopy
 
-app = FastAPI()
+app = FastAPI(title="IIMA Certificate Generator", description="Generate certificates efficiently using an Excel file and a Word template.")
 
 # Serve Upload Form
 @app.get("/", response_class=HTMLResponse)
@@ -18,16 +17,19 @@ async def serve_form():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Certificate Generator</title>
+        <title>IIMA Certificate Generator</title>
         <style>
             body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-            form { margin: 20px auto; width: 300px; }
-            input, button { width: 100%; margin-top: 10px; padding: 8px; }
-            #download { display: none; margin-top: 20px; }
+            form { margin: 20px auto; width: 350px; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background-color: #f9f9f9; }
+            input, button { width: 100%; margin-top: 10px; padding: 10px; }
+            button { background-color: #00457C; color: white; border: none; cursor: pointer; }
+            button:hover { background-color: #003366; }
+            #download { display: none; margin-top: 20px; padding: 10px; background-color: #28a745; color: white; text-decoration: none; border-radius: 5px; }
         </style>
     </head>
     <body>
-        <h2>Upload Excel & Word Template</h2>
+        <h2>IIMA Certificate Generator</h2>
+        <p>Upload an Excel file with participant names and a Word template with '{Name}' placeholder.</p>
         <form id="upload-form">
             <input type="file" id="excel" accept=".xlsx" required><br>
             <input type="file" id="docx" accept=".docx" required><br>
@@ -39,18 +41,11 @@ async def serve_form():
         <script>
             document.getElementById("upload-form").addEventListener("submit", async function(event) {
                 event.preventDefault();
-                
                 let formData = new FormData();
                 formData.append("excel_file", document.getElementById("excel").files[0]);
                 formData.append("docx_template", document.getElementById("docx").files[0]);
-
                 document.getElementById("message").innerText = "Processing...";
-
-                let response = await fetch("/generate-certificates/", {
-                    method: "POST",
-                    body: formData
-                });
-
+                let response = await fetch("/generate-certificates/", { method: "POST", body: formData });
                 if (response.ok) {
                     let blob = await response.blob();
                     let url = window.URL.createObjectURL(blob);
@@ -69,12 +64,10 @@ async def serve_form():
 
 @app.post("/generate-certificates/")
 async def generate_certificates(excel_file: UploadFile = File(...), docx_template: UploadFile = File(...)):
-    # Create temporary directory
     temp_dir = tempfile.mkdtemp()
     output_dir = os.path.join(temp_dir, "certificates")
     os.makedirs(output_dir, exist_ok=True)
     
-    # Save uploaded files
     excel_path = os.path.join(temp_dir, excel_file.filename)
     docx_path = os.path.join(temp_dir, docx_template.filename)
     with open(excel_path, "wb") as f:
@@ -82,26 +75,16 @@ async def generate_certificates(excel_file: UploadFile = File(...), docx_templat
     with open(docx_path, "wb") as f:
         shutil.copyfileobj(docx_template.file, f)
     
-    # Read names from Excel
     df = pd.read_excel(excel_path)
-    names = df.iloc[:, 0].str.strip().tolist()
+    names = df.iloc[:, 0].dropna().str.strip().tolist()
     
     for name in names:
-        # Create a deep copy of the original document to preserve all formatting
         doc = Document(docx_path)
-        
-        # Iterate through all paragraphs to find and replace the name
         for paragraph in doc.paragraphs:
-            # Check if the paragraph contains the placeholder
             if '{Name}' in paragraph.text:
-                # Preserve the original paragraph formatting
                 paragraph.text = paragraph.text.replace('{Name}', name)
-        
-        # Save the modified document
-        docx_output_path = os.path.join(output_dir, f"{name}_Certificate.docx")
-        doc.save(docx_output_path)
+        doc.save(os.path.join(output_dir, f"{name}_Certificate.docx"))
     
-    # Zip all DOCXs for download
     zip_path = os.path.join(temp_dir, "certificates.zip")
     shutil.make_archive(zip_path.replace(".zip", ""), 'zip', output_dir)
     
