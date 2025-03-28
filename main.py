@@ -1,33 +1,74 @@
-from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-
 import pandas as pd
 import os
 import tempfile
 import shutil
 from docx import Document
+from copy import deepcopy
 
 app = FastAPI()
 
-# CORS Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Serve Upload Form
+@app.get("/", response_class=HTMLResponse)
+async def serve_form():
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Certificate Generator</title>
+        <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+            form { margin: 20px auto; width: 300px; }
+            input, button { width: 100%; margin-top: 10px; padding: 8px; }
+            #download { display: none; margin-top: 20px; }
+        </style>
+    </head>
+    <body>
+        <h2>Upload Excel & Word Template</h2>
+        <form id="upload-form">
+            <input type="file" id="excel" accept=".xlsx" required><br>
+            <input type="file" id="docx" accept=".docx" required><br>
+            <button type="submit">Generate Certificates</button>
+        </form>
+        <p id="message"></p>
+        <a id="download" href="#" download>Download Certificates</a>
+
+        <script>
+            document.getElementById("upload-form").addEventListener("submit", async function(event) {
+                event.preventDefault();
+                
+                let formData = new FormData();
+                formData.append("excel_file", document.getElementById("excel").files[0]);
+                formData.append("docx_template", document.getElementById("docx").files[0]);
+
+                document.getElementById("message").innerText = "Processing...";
+
+                let response = await fetch("/generate-certificates/", {
+                    method: "POST",
+                    body: formData
+                });
+
+                if (response.ok) {
+                    let blob = await response.blob();
+                    let url = window.URL.createObjectURL(blob);
+                    let downloadLink = document.getElementById("download");
+                    downloadLink.href = url;
+                    downloadLink.style.display = "block";
+                    document.getElementById("message").innerText = "✅ Certificates generated! Download below:";
+                } else {
+                    document.getElementById("message").innerText = "❌ Error generating certificates!";
+                }
+            });
+        </script>
+    </body>
+    </html>
+    """
 
 @app.post("/generate-certificates/")
-async def generate_certificates(
-    excel_file: UploadFile = File(...), 
-    docx_template: UploadFile = File(...),
-    program_type: str = Form(...),
-    program_name: str = Form(...)
-):
+async def generate_certificates(excel_file: UploadFile = File(...), docx_template: UploadFile = File(...)):
     # Create temporary directory
     temp_dir = tempfile.mkdtemp()
     output_dir = os.path.join(temp_dir, "certificates")
@@ -36,7 +77,6 @@ async def generate_certificates(
     # Save uploaded files
     excel_path = os.path.join(temp_dir, excel_file.filename)
     docx_path = os.path.join(temp_dir, docx_template.filename)
-    
     with open(excel_path, "wb") as f:
         shutil.copyfileobj(excel_file.file, f)
     with open(docx_path, "wb") as f:
@@ -57,11 +97,6 @@ async def generate_certificates(
                 # Preserve the original paragraph formatting
                 paragraph.text = paragraph.text.replace('{Name}', name)
         
-        # Additional replacements for program details
-        for paragraph in doc.paragraphs:
-            paragraph.text = paragraph.text.replace('{ProgramType}', program_type)
-            paragraph.text = paragraph.text.replace('{ProgramName}', program_name)
-        
         # Save the modified document
         docx_output_path = os.path.join(output_dir, f"{name}_Certificate.docx")
         doc.save(docx_output_path)
@@ -70,7 +105,4 @@ async def generate_certificates(
     zip_path = os.path.join(temp_dir, "certificates.zip")
     shutil.make_archive(zip_path.replace(".zip", ""), 'zip', output_dir)
     
-    return FileResponse(zip_path, filename=f"{program_name}_Certificates.zip", media_type="application/zip")
-
-# Optional: Serve React frontend if needed
-app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
+    return FileResponse(zip_path, filename="certificates.zip", media_type="application/zip")
