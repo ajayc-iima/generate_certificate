@@ -5,12 +5,13 @@ import os
 import tempfile
 import shutil
 from docx import Document
-import subprocess
+from fpdf import FPDF
 
 app = FastAPI()
 
 @app.post("/generate-certificates/")
 async def generate_certificates(excel_file: UploadFile = File(...), docx_template: UploadFile = File(...)):
+    # Create temporary directory
     temp_dir = tempfile.mkdtemp()
     output_dir = os.path.join(temp_dir, "certificates")
     os.makedirs(output_dir, exist_ok=True)
@@ -29,17 +30,17 @@ async def generate_certificates(excel_file: UploadFile = File(...), docx_templat
     
     for name in names:
         doc = Document(docx_path)
-        replace_text_in_doc(doc, "{Name}", name)  # Improved text replacement
+        replace_text(doc, "{Name}", name)  # Using improved replacement function
         
         # Save DOCX certificate
         docx_output_path = os.path.join(output_dir, f"{name}_Certificate.docx")
         doc.save(docx_output_path)
 
-        # Convert DOCX to PDF using LibreOffice
+        # Convert DOCX to PDF
         pdf_output_path = os.path.join(output_dir, f"{name}_Certificate.pdf")
         convert_docx_to_pdf(docx_output_path, pdf_output_path)
         
-        # Remove .docx file after conversion
+        # Remove .docx file
         os.remove(docx_output_path)
     
     # Zip all PDFs for download
@@ -48,26 +49,30 @@ async def generate_certificates(excel_file: UploadFile = File(...), docx_templat
     
     return FileResponse(zip_path, filename="certificates.zip", media_type="application/zip")
 
-
-def replace_text_in_doc(doc, placeholder, replacement):
+def replace_text(doc, placeholder, replacement):
     """ Replaces text properly across runs without breaking formatting """
     for paragraph in doc.paragraphs:
-        for run in paragraph.runs:
-            if placeholder in run.text:
+        if placeholder in paragraph.text:
+            for run in paragraph.runs:
                 run.text = run.text.replace(placeholder, replacement)
-    
-    # Replace text inside tables as well
+
+    # Also replace text inside tables
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for paragraph in cell.paragraphs:
                     for run in paragraph.runs:
-                        if placeholder in run.text:
-                            run.text = run.text.replace(placeholder, replacement)
-
+                        run.text = run.text.replace(placeholder, replacement)
 
 def convert_docx_to_pdf(docx_path, pdf_path):
-    """ Converts DOCX to PDF using LibreOffice to retain formatting """
-    output_dir = os.path.dirname(pdf_path)
-    subprocess.run(["libreoffice", "--headless", "--convert-to", "pdf", docx_path, "--outdir", output_dir])
+    """Convert a Word document to a simple PDF using FPDF"""
+    doc = Document(docx_path)
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
 
+    for para in doc.paragraphs:
+        pdf.multi_cell(0, 10, txt=para.text, align='L')
+    
+    pdf.output(pdf_path)
