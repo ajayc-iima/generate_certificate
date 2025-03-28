@@ -171,7 +171,7 @@ async def serve_form():
 <body>
     <div class="certificate-generator">
         <div class="generator-header">
-            <h2>Certificate Generator</h2>
+            <h2> IIMA Certificate Generator</h2>
             <p>Upload an Excel file with participant names and a Word template</p>
         </div>
 
