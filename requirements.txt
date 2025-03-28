@@ -3,6 +3,6 @@ uvicorn
 gunicorn
 pandas
 python-docx
-pypdf2
+fpdf
 openpyxl
 python-multipart
